@@ -12,6 +12,7 @@ Curated resources for learning [Tidyverse](https://www.tidyverse.org/), [Tidymod
 
 ## Tidyverse
 
+-   [Tidyverse](https://www.tidyverse.org/): The tidyverse is an opinionated [collection of R packages](https://www.tidyverse.org/packages) designed for data science. All packages share an underlying design philosophy, grammar, and data structures.
 -   [R for Data Science (2e)](https://r4ds.hadley.nz/) by Hadley Wickham, Mine Cetinkaya-Rundel, and Garrett Grolemund
 -   Posit Cheatsheets: [readr/readxl/googlesheets4](https://rstudio.github.io/cheatsheets/html/data-import.html), [dplyr](https://rstudio.github.io/cheatsheets/html/data-transformation.html), [tidyr](https://rstudio.github.io/cheatsheets/html/tidyr.html), [ggplot2](https://rstudio.github.io/cheatsheets/html/data-visualization.html), [stringr](https://rstudio.github.io/cheatsheets/html/strings.html), [purrr](https://rstudio.github.io/cheatsheets/html/purrr.html), [forcats](https://rstudio.github.io/cheatsheets/html/factors.html), [lubridate](https://rstudio.github.io/cheatsheets/html/lubridate.html)
 -   [duckplyr](https://duckplyr.tidyverse.org/): A [DuckDB](https://duckdb.org/)-backed version of [dplyr](https://dplyr.tidyverse.org/) for ultra-fast data manipulation.
@@ -21,6 +22,11 @@ Curated resources for learning [Tidyverse](https://www.tidyverse.org/), [Tidymod
 -   [Statistics and Prediction Algorithms Through Case Studies](https://rafalab.dfci.harvard.edu/dsbook-part-2/) by Rafael Irizarry
 -   [Statistical Inference via Data Science–A ModernDive into R and the Tidyverse](https://moderndive.com/) by Chester Ismay and Albert Y. Kim
 -   [Modern R with the tidyverse](https://modern-rstats.eu/) by Bruno Rodrigues
+-   [DataCamp](https://www.datacamp.com/) skill tracks for tidyverse:
+    -   [Data Manipulation with R](https://www.datacamp.com/tracks/data-manipulation-with-r)
+    -   [Data Visualization with R](https://www.datacamp.com/tracks/data-visualization-with-r)
+    -   [Tidyverse Fundamentals with R](https://www.datacamp.com/tracks/tidyverse-fundamentals)
+    -   [Intermediate Tidyverse Toolbox](https://www.datacamp.com/tracks/intermediate-tidyverse-toolbox)
 
 <br>
 
