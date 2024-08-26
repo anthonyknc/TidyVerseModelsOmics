@@ -5,7 +5,7 @@ format:
   html:    
     self-contained: true
 toc: true
-date: "2024-08-22"
+date: "2024-08-25"
 ---
 
 ```{r}
@@ -29,16 +29,16 @@ home_sales <- read_csv("data/home_sales.csv")
 ```{r}
 # Create a data split object
 home_split <- initial_split(
-  home_sales,
+  data = home_sales,
   prop = 0.70,
   strata = selling_price
 )
 
 # Create the training data
-home_train <- home_split |> training()
+home_train <- home_split %>% training()
 
 # Create the test data
-home_test <- home_split |> testing()
+home_test <- home_split %>% testing()
 
 # Check number of rows in each dataset
 nrow(home_train)
@@ -49,7 +49,7 @@ nrow(home_test)
 Stratifying by the outcome variable when generating training and test datasets ensures that the outcome variable values have a similar range in both datasets.
 ```{r}
 # Distribution of selling_price in training data
-home_train |>
+home_train %>% 
   summarize(
     min_sell_price = min(selling_price),
     max_sell_price = max(selling_price),
@@ -58,7 +58,7 @@ home_train |>
   )
 
 # Distribution of selling_price in test data
-home_test |>
+home_test  %>% 
   summarize(
     min_sell_price = min(selling_price),
     max_sell_price = max(selling_price),
@@ -73,19 +73,19 @@ With parsnip, it is easy to define models using the various packages, or engines
 
 ```{r}
 # Initialize a linear regression object, linear_model
-linear_model <- linear_reg() |>
+linear_model <- linear_reg() %>% 
   # Set the model engine
-  set_engine("lm") |>
+  set_engine("lm") %>% 
   # Set the model mode
   set_mode("regression")
 
 # Fit the model using the training data
-# Only use home_age and sqft_living as the predictor variables
-lm_fit <- linear_model |>
+# Only use home_age and sqft_living as the predictor variables for now
+lm_fit <- linear_model %>% 
   fit(selling_price ~ home_age + sqft_living, data = home_train)
 
 # Print lm_fit to view model information
-lm_fit |> tidy()
+lm_fit %>% tidy()
 ```
 The `tidy()` function automatically creates a tibble of estimated model parameters. Since `sqft_living` has a positive estimated parameter, the selling price of homes increases with the square footage. Conversely, since `home_age` has a negative estimated parameter, older homes tend to have lower selling prices.
 
@@ -102,8 +102,8 @@ home_predictions <- predict(lm_fit, new_data = home_test)
 home_predictions
 
 # Combine test data with predictions
-home_test_results <- home_test |>
-  select(selling_price, home_age, sqft_living) |>
+home_test_results <- home_test %>% 
+  select(selling_price, home_age, sqft_living) %>% 
   bind_cols(home_predictions)
 
 # View results
@@ -119,10 +119,10 @@ Evaluating model results is an important step in the modeling process. Model eva
 home_test_results
 
 # Calculate the RMSE metric
-home_test_results |> rmse(selling_price, .pred)
+home_test_results %>% rmse(selling_price, .pred)
 
 # Calculate the R squared metric
-home_test_results |> rsq(selling_price, .pred)
+home_test_results %>% rsq(selling_price, .pred)
 ```
 
 ## R squared plot
@@ -144,16 +144,16 @@ In this exercise, you will train and evaluate the performance of a linear regres
 
 ```{r}
 # Define a linear regression model
-linear_model <- linear_reg() |>
-  set_engine("lm") |>
+linear_model <- linear_reg() %>% 
+  set_engine("lm") %>% 
   set_mode("regression")
 
 # Train linear_model with last_fit() using all available predictors
-linear_fit <- linear_model |>
+linear_fit <- linear_model %>% 
   last_fit(selling_price ~ ., split = home_split)
 
 # Collect predictions and view results
-predictions_df <- linear_fit |> collect_predictions()
+predictions_df <- linear_fit %>% collect_predictions()
 predictions_df
 
 # Make an R squared plot using predictions_df
