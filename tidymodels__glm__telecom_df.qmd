@@ -1,0 +1,229 @@
+---
+title: "Supervised Machine Learning--Classification, Logistic Regression"
+author: Anthony Chan
+format:
+  html:    
+    self-contained: true
+toc: true
+date: "2024-08-25"
+date-modified: last-modified
+---
+
+```{r}
+#| output: false
+library(tidyverse)
+library(tidymodels)
+
+# Load the data
+telecom_df <- read_csv("data/telecom_df.csv") %>% 
+    # Outcome variable needs to be a factor with first level being the positive class
+    mutate(canceled_service = factor(canceled_service, levels=c("yes", "no")))
+```
+
+## Data resampling
+
+The first step in a machine learning project is to create training and test datasets for model fitting and evaluation. The test dataset provides an estimate of how your model will perform on new data and helps to guard against overfitting.
+
+-   Dataset: `telecom_df`
+-   Outcome variable: `canceled_service`
+-   Predictor variables: `avg_call_mins`,`avg_intl_mins`, and `monthly_charges`
+
+```{r}
+# Create data split object
+telecom_split <- initial_split(
+    data = telecom_df,
+    prop = 0.75,
+    strata = canceled_service
+)
+
+# Create the training data
+telecom_train <- telecom_split %>% training()
+
+# Create the test data
+telecom_test <- telecom_split %>% testing()
+
+# Check the number of rows
+nrow(telecom_train)
+nrow(telecom_test)
+```
+
+## Fitting a logistic regression model
+
+In addition to regression models, the parsnip package also provides a general interface to classification models in R.
+
+```{r}
+# Specify a logistic regression model
+logistic_model <- logistic_reg() %>%
+  # Set the engine
+  set_engine("glm") %>%
+  # Set the mode
+  set_mode("classification")
+
+# Print the model specification
+logistic_model
+
+# Fit to training data
+logistic_fit <- logistic_model %>%
+  fit(canceled_service ~ avg_call_mins + avg_intl_mins + monthly_charges,
+      data = telecom_train)
+
+# Print model fit object
+logistic_fit
+```
+
+## Combining test dataset results
+
+Evaluating your model's performance on the test dataset gives insights into how well your model predicts on new data sources. These insights will help you communicate your model's value in solving problems or improving decision making. For classification models, `yardstick` functions require a tibble of model results as the first argument.
+
+```{r}
+# Predict outcome categories
+class_preds <- predict(logistic_fit, new_data = telecom_test, type = "class")
+
+# Obtain estimated probabilities for each outcome value
+prob_preds <- predict(logistic_fit, new_data = telecom_test, type = "prob")
+
+# Combine test set results
+telecom_results <- telecom_test %>% 
+  select(canceled_service, avg_call_mins, avg_intl_mins, monthly_charges) %>% 
+  bind_cols(class_preds, prob_preds)
+
+# View results tibble
+telecom_results[["canceled_service"]]
+```
+
+# **Evaluating performance with yardstick**
+
+In the previous exercise, you calculated classification metrics from a sample confusion matrix. The `yardstick` package was designed to automate this process.
+
+```{r}
+# Calculate the confusion matrix
+conf_mat(data = telecom_results, truth = canceled_service, estimate = .pred_class)
+
+# Calculate the accuracy
+accuracy(data= telecom_results, truth = canceled_service, estimate = .pred_class)
+
+# Calculate the sensitivity
+sens(data = telecom_results, truth = canceled_service, estimate = .pred_class)
+
+# Calculate the specificity
+spec(data = telecom_results, truth = canceled_service, estimate = .pred_class)
+```
+
+The specificity of your logistic regression model is 0.895, which is more than double the sensitivity of 0.42. This indicates that your model is much better at detecting customers who will not cancel their telecommunications service versus the ones who will.
+
+## **Creating custom metric sets**
+
+The `yardstick` package also provides the ability to create custom sets of model metrics. In cases where the cost of obtaining false negative errors is different from the cost of false positive errors, it may be important to examine a specific set of performance metrics.
+
+Instead of calculating accuracy, sensitivity, and specificity separately, you can create your own metric function that calculates all three at the same time.
+
+```{r}
+# Create a custom metric function
+telecom_metrics <- metric_set(accuracy, sens, spec)
+
+# Calculate metrics using model results tibble
+telecom_metrics(telecom_results, truth = canceled_service, estimate = .pred_class)
+
+# Create a confusion matrix
+conf_mat(
+  data = telecom_results,
+  truth = canceled_service,
+  estimate = .pred_class
+) %>%
+  # Pass to the summary() function
+  summary()
+```
+
+## Plotting the confusion matrix
+
+Calculating performance metrics with the yardstick package provides insight into how well a classification model is performing on the test dataset. Most yardstick functions return a single number that summarizes classification performance. Many times, it is helpful to create visualizations of the confusion matrix to more easily communicate your results.
+
+```{r}
+# Create a confusion matrix
+conf_mat(data = telecom_results,
+         truth = canceled_service,
+         estimate = .pred_class) %>% 
+  # Create a heat map
+  autoplot(type = "heatmap")
+
+# Create a confusion matrix
+conf_mat(data = telecom_results,
+         truth = canceled_service,
+         estimate = .pred_class) %>% 
+  # Create a mosaic plot
+  autoplot(type = "mosaic")
+```
+
+## ROC curves and area under the ROC curve
+
+ROC curves are used to visualize the performance of a classification model across a range of probability thresholds. An ROC curve with the majority of points near the upper left corner of the plot indicates that a classification model is able to correctly predict both the positive and negative outcomes correctly across a wide range of probability thresholds. The area under this curve provides a letter grade summary of model performance.
+
+Check this video qout for detailed explanation: [ROC and AUC, Clearly Explained!](https://youtu.be/4jRBRDbJemM?si=uOlz5kUw-nyT2PF1) by Josh Starmer
+
+```{r}
+# Calculate metrics across thresholds
+threshold_df <- telecom_results %>% roc_curve(truth = canceled_service, .pred_yes)
+
+# View results
+threshold_df
+
+# Plot ROC curve
+threshold_df %>% autoplot()
+
+# Calculate ROC AUC
+roc_auc(telecom_results, truth = canceled_service, .pred_yes)
+```
+
+## Streamlining the modeling process
+The last_fit() function is designed to streamline the modeling workflow in tidymodels. Instead of training your model on the training data and building a results tibble using the test data, last_fit() accomplishes this with one function.
+
+```{r}
+# Train model with last_fit()
+telecom_last_fit <- logistic_model %>%
+  last_fit(canceled_service ~ avg_call_mins + avg_intl_mins + monthly_charges,
+    split = telecom_split
+  )
+
+# View test set metrics
+telecom_last_fit %>% collect_metrics()
+
+# Collect predictions
+last_fit_results <- telecom_last_fit %>% collect_predictions()
+
+# View results
+last_fit_results
+
+# Custom metrics function
+last_fit_metrics <- metric_set(accuracy, sens, spec, roc_auc)
+
+
+# Calculate metrics
+last_fit_metrics(
+  last_fit_results,
+  truth = canceled_service,
+  estimate = .pred_class,
+  .pred_yes
+)
+```
+
+## Complete modeling workflow
+In this exercise, you will use the last_fit() function to train a logistic regression model and evaluate its performance on the test data by assessing the ROC curve and the area under the ROC curve.
+Similar to previous exercises, you will predict canceled_service in the telecom_df data, but with an additional predictor variable to see if you can improve model performance.
+
+
+```{r}
+# Train a logistic regression model
+logistic_fit <- logistic_model %>% 
+  last_fit(canceled_service ~ avg_call_mins + avg_intl_mins + monthly_charges + months_with_company, split = telecom_split)
+
+# Collect metrics
+logistic_fit %>% collect_metrics()
+
+# Collect model predictions
+logistic_fit %>% 
+  collect_predictions() %>% 
+  # Plot ROC curve
+  roc_curve(truth = canceled_service, .pred_yes) %>% 
+  autoplot()
+```
+The ROC curve shows that the logistic regression model performs better than a model that guesses at random (the dashed line in the plot). Adding the months_with_company predictor variable increased your area under the ROC curve from 0.76 in your previous model to 0.837!
