@@ -1,11 +1,12 @@
 ---
-title: "Supervised Machine Learning--Linear Regression"
+title: "Supervised Machine Learning--Regression, Linear Regression"
 author: Anthony Chan
 format:
   html:    
     self-contained: true
 toc: true
-date: "2024-08-23"
+date: "2024-08-25"
+date-modified: last-modified
 ---
 
 ```{r}
