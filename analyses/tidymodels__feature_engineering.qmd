@@ -1,0 +1,54 @@
+---
+title: "Feature Engineering"
+author: Anthony Chan
+format:
+  html:    
+    self-contained: true
+toc: true
+date-modified: last-modified
+date-format: "YYYY-MM-DD"
+---
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(here)
+```
+
+## Creating recipe objects
+```{r}
+# Load the data
+telecom_df <- read_csv("data/telecom_df.csv") %>%
+  mutate(canceled_service = factor(canceled_service, levels = c("yes", "no")))
+
+# Split the data
+telecom_split <- initial_split(telecom_df, prop = 0.75, strata = canceled_service)
+
+# Create the training data
+telecom_train <- telecom_split %>% training()
+
+# Create the test data
+telecom_test <- telecom_split %>% testing()
+
+# Specify feature engineering recipe
+telecom_log_rec <- recipe(canceled_service ~ ., data = telecom_train) %>%
+  # Add log transformation step for numeric predictors
+  # This will reduce the range of these variables and potentially make their distributions more symmetric, which may increase the accuracy of your logistic regression model.
+  step_log(avg_call_mins, avg_intl_mins, base = 10)
+
+# Print recipe object
+telecom_log_rec
+
+# View variable roles and data types
+telecom_log_rec %>% summary()
+```
+
+
+```{r}
+
+
+
+
+
+```
