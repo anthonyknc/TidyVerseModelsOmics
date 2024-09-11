@@ -1,0 +1,253 @@
+---
+title: "Tidymodels Workflow"
+author: Anthony Chan
+format:
+  html:    
+    self-contained: true
+toc: true
+date-modified: last-modified
+date-format: "YYYY-MM-DD"
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load Libraries
+```{r}
+library(here)
+library(readr)
+library(tidymodels)
+library(corrplot)
+library(RColorBrewer)
+```
+
+## Data Preparation
+```{r}
+# Load the data
+loans_df <- read_csv(here("data", "loan_df.csv")) |>
+  mutate(loan_default = factor(loan_default, levels = c("yes", "no"))) |>
+  mutate(missed_payment_2_yr = factor(missed_payment_2_yr, levels = c("yes", "no")))
+
+# Create data split object
+loans_split <- initial_split(loans_df, prop = 0.75, strata = loan_default)
+
+# Build training data
+loans_train <- loans_split |> training()
+
+# Build test data
+loans_test <- loans_split |> testing()
+```
+
+## Check for Correlated Predictors
+```{r}
+loans_train |> 
+  # Select numeric columns
+  select_if(is.numeric) |>
+  # Calculate correlation matrix
+  cor() |>
+  # Plot the correlation matrix using corrplot
+  corrplot(
+    method = "circle",
+    type = "lower",
+    order = "hclust",
+    col = brewer.pal(n = 8, name = "RdBu")
+  )
+```
+
+## Building a Decision Tree Model and a Feature Engineering Recipe
+```{r}
+# Build a decision tree model
+dt_model <- decision_tree() |> 
+  # Specify the engine
+  set_engine("rpart") |> 
+  # Specify the mode
+  set_mode("classification")
+
+# Build feature engineering pipeline
+loans_recipe <- recipe(loan_default ~ ., data = loans_train) |> 
+  # Correlation filter
+  step_corr(all_numeric(), threshold = 0.85) |> 
+  # Normalize numeric predictors
+  step_normalize(all_numeric()) |> 
+  # Create dummy variables
+  step_dummy(all_nominal(), -all_outcomes())
+```
+
+## Make a Tidymodels Workflow
+```{r}
+# Create a workflow
+loans_dt_wkfl <- workflow() |> 
+  # Include the model object
+  add_model(dt_model) |> 
+  # Include the recipe object
+  add_recipe(loans_recipe)
+
+# Train the workflow
+loans_dt_wkfl_fit <- loans_dt_wkfl |> 
+  last_fit(split = loans_split)
+
+# Calculate performance metrics on test data
+loans_dt_wkfl_fit |> collect_metrics()
+```
+
+## Measuring Performance with Cross Validation on the Training Data
+```{r}
+# Create cross validation folds
+# Set seed for reproducibility
+set.seed(290)
+loans_folds <- vfold_cv(loans_train, v = 5, strata = loan_default)
+
+# Create custom metrics function
+loans_metrics <- metric_set(roc_auc, sens, spec)
+
+# Fit resamples
+loans_dt_rs <- loans_dt_wkfl |>
+  fit_resamples(resamples = loans_folds, metrics = loans_metrics)
+
+# View performance metrics
+loans_dt_rs |> collect_metrics()
+```
+
+## Cross Validation with Logistic Regression
+```{r}
+logistic_model <- logistic_reg() |> 
+  # Specify the engine
+  set_engine('glm') |> 
+  # Specify the mode
+  set_mode('classification')
+
+# Create workflow
+loans_logistic_wkfl <- workflow() |> 
+  # Add model
+  add_model(logistic_model) |> 
+  # Add recipe
+  add_recipe(loans_recipe)
+
+# Fit resamples
+loans_logistic_rs <- loans_logistic_wkfl |> 
+  fit_resamples(resamples = loans_folds)
+
+# View performance metrics
+loans_logistic_rs |> collect_metrics()
+```
+
+```{r}
+# Detailed cross validation results
+dt_rs_results <- loans_dt_rs |> 
+  collect_metrics(summarize = FALSE)
+
+# Explore model performance for decision tree
+dt_rs_results |> 
+  group_by(.metric) |> 
+  summarize(min = min(.estimate),
+            median = median(.estimate),
+            max = max(.estimate))
+
+# Detailed cross validation results
+logistic_rs_results <- loans_logistic_rs |> 
+  collect_metrics(summarize = FALSE)
+
+# Explore model performance for logistic regression
+logistic_rs_results |> 
+  group_by(.metric) |> 
+  summarize(min = min(.estimate),
+            median = median(.estimate),
+            max = max(.estimate))
+
+```
+
+## Tuning decision tree
+```{r}
+# Set tuning hyperparameters
+dt_tune_model <- decision_tree(cost_complexity = tune(),
+                               tree_depth = tune(),
+                               min_n = tune()) |> 
+  # Specify engine
+  set_engine('rpart') |> 
+  # Specify mode
+  set_mode('classification')
+
+# Create a tuning workflow
+loans_tune_wkfl <- loans_dt_wkfl |> 
+  # Replace model
+  update_model(dt_tune_model)
+
+loans_tune_wkfl
+
+
+```
+
+
+```{r}
+# Hyperparameter tuning with grid search
+set.seed(214)
+dt_grid <- grid_random(parameters(dt_tune_model), size = 5)
+
+dt_grid
+
+# Hyperparameter tuning
+dt_tuning <- loans_tune_wkfl |> 
+  tune_grid(resamples = loans_folds,
+      grid = dt_grid,
+      metrics = loans_metrics)
+
+# View results
+dt_tuning |> 
+  collect_metrics()
+
+# Collect detailed tuning results
+dt_tuning_results <- dt_tuning |> 
+  collect_metrics(summarize = FALSE)
+
+dt_tuning_results
+
+# Explore detailed ROC AUC results for each fold
+dt_tuning_results |> 
+  filter(.metric == "roc_auc") |> 
+  group_by(id) |> 
+  summarize(min_roc_auc = min(.estimate),
+            median_roc_auc = median(.estimate),
+            max_roc_auc = max(.estimate))
+
+
+```
+
+## Finalizing a workflow
+```{r}
+# Display 5 best performing models
+dt_tuning |> 
+  show_best(metric = 'roc_auc', n = 5)
+
+# Select based on best performance
+best_dt_model <- dt_tuning |> 
+  # Choose the best model based on roc_auc
+  select_best(metric = 'roc_auc')
+
+# Finalize your workflow
+final_loans_wkfl <- loans_tune_wkfl |> 
+  finalize_workflow(best_dt_model)
+
+final_loans_wkfl
+
+
+
+
+```
+
+```{r}
+# Train finalized decision tree workflow
+loans_final_fit <- final_loans_wkfl |> 
+  last_fit(split = loans_split)
+
+# View performance metrics
+loans_final_fit |> 
+  collect_metrics()
+
+# Create an ROC curve
+loans_final_fit |> 
+  # Collect predictions
+  collect_predictions() |>
+  # Calculate ROC curve metrics
+  roc_curve(truth = loan_default, .pred_yes) |>
+  # Plot the ROC curve
+  autoplot()
+```

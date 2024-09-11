@@ -1,0 +1,248 @@
+---
+title: "Feature Engineering and Logistic Regression"
+author: Anthony Chan
+format:
+  html:    
+    self-contained: true
+toc: true
+date-modified: last-modified
+date-format: "YYYY-MM-DD"
+---
+
+
+```{r}
+library(tidymodels)
+library(here)
+```
+
+## Laod and split the data
+
+```{r}
+# Load the data
+telecom_df <- read_csv(here("data", "telecom_df.csv")) %>%
+  mutate(canceled_service = factor(canceled_service, levels = c("yes", "no"))) %>% 
+  select(-`...1`)
+
+telecom_split <- initial_split(telecom_df, prop = 0.75, strata = canceled_service)
+
+# Create the training data
+telecom_train <- telecom_split %>% training()
+
+# Create the test data
+telecom_test <- telecom_split %>% testing()
+```
+
+## Creating recipe objects
+```{r}
+# Specify feature engineering recipe
+telecom_log_rec <- recipe(canceled_service ~ ., data = telecom_train) %>%
+  # Add log transformation step for numeric predictors
+  # This will reduce the range of these variables and potentially make their distributions more symmetric, which may increase the accuracy of your logistic regression model.
+  step_log(avg_call_mins, avg_intl_mins, base = 10)
+
+# Print recipe object
+telecom_log_rec
+
+# View variable roles and data types
+telecom_log_rec %>% summary()
+```
+
+## Training a recipe object
+```{r}
+# Train the telecom_log_rec object
+telecom_log_rec_prep <- telecom_log_rec %>%
+  prep(training = telecom_train)
+
+# View results
+telecom_log_rec_prep
+
+# Apply to training data
+telecom_log_rec_prep %>% bake(new_data = telecom_train)
+
+# Apply to test data
+telecom_log_rec_prep %>% bake(new_data = telecom_test)
+```
+
+## Discovering correlated predictors
+```{r}
+telecom_train %>% 
+  # Select numeric columns
+  select_if(is.numeric) %>% 
+  # Calculate correlation matrix
+  cor()
+
+# Plot correlated predictors
+ggplot(telecom_train, aes(x = avg_data_gb, y = monthly_charges)) + 
+  # Add points
+  geom_point()  + 
+  # Add title
+  labs(title = "Monthly Charges vs. Average Data Usage",
+       y = 'Monthly Charges ($)', x = 'Average Data Usage (GB)') 
+```
+
+## Removing correlated predictors with recipes
+```{r}
+# Specify a recipe object
+telecom_cor_rec <- recipe(canceled_service ~ ., data = telecom_train) %>%
+  # Remove correlated variables
+  step_corr(all_numeric(), threshold = 0.8)
+
+# Train the recipe
+telecom_cor_rec_prep <- telecom_cor_rec %>% 
+  prep(training = telecom_train)
+
+# Apply to training data
+telecom_cor_rec_prep %>% 
+  bake(new_data = telecom_train)
+
+# Apply to test data
+telecom_cor_rec_prep %>% 
+  bake(new_data = telecom_test)
+```
+
+## Multiple feature engineering steps
+```{r}
+# Specify a recipe object
+telecom_norm_rec <- recipe(
+  canceled_service ~ ., data = telecom_train) %>% 
+  # Remove correlated variables
+  step_corr(all_numeric(), threshold = 0.8) %>% 
+  # Normalize numeric predictors
+  step_normalize(all_numeric())
+
+# Train the recipe
+telecom_norm_rec_prep <- telecom_norm_rec %>% 
+  prep(training = telecom_train)
+
+# Apply to test data
+telecom_norm_rec_prep %>% 
+  bake(new_data = telecom_test)
+```
+
+## Ordering of step_*() functions
+The `step_*()` functions within a recipe are carried out in sequential order. 
+```{r}
+telecom_recipe_1 <- 
+  recipe(canceled_service ~ avg_data_gb + contract, data = telecom_train) %>% 
+  # Normalize numeric predictors
+  step_normalize(all_numeric())  %>% 
+  # Create dummy variables for nominal predictors
+  step_dummy(all_nominal(), -all_outcomes())
+
+# Train and apply telecom_recipe_1 on the test data
+telecom_recipe_1 %>% 
+  prep(training = telecom_train) %>% 
+  bake(new_data = telecom_test)
+
+telecom_recipe_2 <- 
+  recipe(canceled_service ~ avg_data_gb + contract, data = telecom_train)  %>% 
+  # Create dummy variables for nominal predictors
+  step_dummy(all_nominal(), -all_outcomes())  %>% 
+  # Normalize numeric predictors
+  step_normalize(all_numeric())
+
+# Train and apply telecom_recipe_2 on the test data
+telecom_recipe_2 %>% 
+  prep(training = telecom_train) %>% 
+  bake(new_data = telecom_test)
+```
+Notice that telecom_recipe_1 produced [0, 1] values in the dummy variable columns while telecom_recipe_2 produced dummy variables which were then normalized! The predictor contract_two_year created by telecom_recipe_2 is -0.471 instead of 0 and 2.12 instead of 1 due to normalization. For model interpretation, it's best to normalize variables before creating dummy variables. Also notice that since you only specified two predictor variables in your model formula, the rest of the columns are ignored by your recipe objects when transforming new data sources.
+
+## Complete feature engineering pipeline
+```{r}
+# Create a recipe that predicts canceled_service using the training data
+telecom_recipe <- recipe(
+  canceled_service ~ ., data = telecom_train) %>% 
+  # Remove correlated predictors
+  step_corr(all_numeric(), threshold = 0.8) %>% 
+  # Normalize numeric predictors
+  step_normalize(all_numeric()) %>% 
+  # Create dummy variables
+  step_dummy(all_nominal(), -all_outcomes())
+
+# Train your recipe and apply it to the test data
+telecom_recipe %>% 
+  prep(training = telecom_train) %>% 
+  bake(new_data = telecom_test)
+
+```
+
+## Feature engineering process
+To incorporate feature engineering into the modeling process, the training and test datasets must be preprocessed before the model fitting stage.
+
+```{r}
+telecom_recipe <- recipe(
+  canceled_service ~ ., data = telecom_train) %>%
+  # Removed correlated predictors
+  step_corr(all_numeric(), threshold = 0.8) %>%
+  # Log transform numeric predictors
+  step_log(all_numeric(), base = 10) %>%
+  # Normalize numeric predictors
+  step_normalize(all_numeric()) %>%
+  # Create dummy variables
+  step_dummy(all_nominal(), -all_outcomes())
+
+# Train recipe
+telecom_recipe_prep <- telecom_recipe %>% 
+  prep(training = telecom_train)
+
+# Transform training data
+telecom_train_baked <- telecom_recipe_prep %>% 
+  bake(new_data = telecom_train)
+
+# Transform test data
+telecom_test_baked <- telecom_recipe_prep %>% 
+  bake(new_data = telecom_test)
+```
+
+## Model training and prediction
+
+```{r}
+# Build a logistic model
+logistic_model <- logistic_reg() %>% 
+  set_engine("glm") %>% 
+  set_mode("classification")
+
+# Train logistic model
+logistic_fit <- logistic_model %>% 
+  fit(canceled_service ~ ., data = telecom_train_baked)
+
+# Obtain class predictions
+class_preds <- predict(
+  logistic_fit, new_data = telecom_test_baked, type = 'class')
+
+# Obtain estimated probabilities
+prob_preds <- predict(
+  logistic_fit, new_data = telecom_test_baked, type = "prob")
+
+# Combine test set results
+telecom_results <- telecom_test_prep %>% 
+  bind_cols(class_preds) %>% 
+  bind_cols(prob_preds)
+
+# Or use augment to predict both "class" and "prob" plus bind_cols()
+# augment(logistic_fit, new_data = telecom_test_baked)
+```
+
+## Model performance metrics
+
+```{r}
+# Create a confusion matrix
+telecom_results %>% 
+  conf_mat(truth = canceled_service, estimate = .pred_class)
+
+# Calculate sensitivity
+telecom_results %>% 
+  sens(truth = canceled_service, estimate = .pred_class)
+
+# Calculate specificity
+telecom_results %>% 
+  spec(truth = canceled_service, estimate = .pred_class)
+
+# Plot ROC curve
+telecom_results %>% 
+  roc_curve(truth = canceled_service, .pred_yes) %>% 
+  autoplot()
+
+```
+From the results of your metric calculations, using feature engineering and incorporating all predictor variables increased your model's sensitivity to 0.57, up from 0.42, and specificity to 0.901, up from 0.895!
